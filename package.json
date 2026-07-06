@@ -1,22 +1,13 @@
 {
-  "name": "bot-registro-rac-japao",
+  "name": "rec-do-japao-bot",
   "version": "1.0.0",
-  "description": "Bot de registro automático para a Rac do Japão",
+  "description": "Bot de registro automático do Discord para a facção Rec do Japão",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3",
+    "discord.js": "^14.14.1",
     "dotenv": "^16.4.5"
-  },
-  "devDependencies": {
-    "nodemon": "^3.1.4"
-  },
-  "engines": {
-    "node": "20.x"
-  },
-  "author": "Rac do Japão",
-  "license": "MIT"
+  }
 }
