@@ -1,0 +1,22 @@
+{
+  "name": "bot-registro-rac-japao",
+  "version": "1.0.0",
+  "description": "Bot de registro automático para a Rac do Japão",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=16.9.0"
+  },
+  "author": "Rac do Japão",
+  "license": "MIT"
+}
