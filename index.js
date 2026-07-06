@@ -1,431 +1,432 @@
-require("dotenv").config();
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ActionRowBuilder,
-  Events,
+/**
+ * ============================================================================
+ * BOT OFICIAL DE REGISTRO DISCORD — REC DO JAPÃO
+ * ============================================================================
+ * 
+ * Desenvolvido em Node.js usando discord.js v14.
+ * Este bot gerencia o recrutamento e padronização de apelidos de forma automática.
+ * ============================================================================
+ */
+
+const { 
+  Client, 
+  GatewayIntentBits, 
+  Partials, 
+  EmbedBuilder, 
+  ButtonBuilder, 
+  ButtonStyle, 
+  ActionRowBuilder, 
+  ModalBuilder, 
+  TextInputBuilder, 
+  TextInputStyle, 
+  Events, 
+  PermissionsBitField 
 } = require("discord.js");
+const fs = require("fs");
+const config = require("./config.js");
 
-const config  = require("./config");
-const utils   = require("./utils");
-const embeds  = require("./embeds");
+// Tenta carregar o Token das variáveis de ambiente ou usa placeholder
+require("dotenv").config();
+const TOKEN = process.env.DISCORD_TOKEN || process.env.TOKEN;
 
-// ─── Cliente Discord ──────────────────────────────────────────────────────────
+if (!TOKEN) {
+  console.error("❌ ERRO CRÍTICO: Token do Discord não configurado no arquivo .env!");
+  process.exit(1);
+}
 
+// Inicializa o Cliente do Discord
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
+    GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Channel, Partials.Message],
+  partials: [Partials.Channel, Partials.GuildMember, Partials.User]
 });
 
-// ─── Dados persistentes ───────────────────────────────────────────────────────
+// Cache para controle de Anti-Spam (ID Usuário -> Timestamp liberação)
+const cooldowns = new Map();
 
-let dados = utils.carregarDados();
-
-function salvar() {
-  utils.salvarDados(dados);
+// Garante que o arquivo de dados exista para persistência se necessário
+if (!fs.existsSync(config.ARQUIVO_DADOS)) {
+  fs.writeFileSync(config.ARQUIVO_DADOS, JSON.stringify({ registros: [] }, null, 2), "utf-8");
 }
 
-// ─── Ready ────────────────────────────────────────────────────────────────────
-
-client.once(Events.ClientReady, async () => {
-  console.log(`\n✅ Bot online como: ${client.user.tag}`);
-  console.log(`   Servidor  : ${config.GUILD_ID}`);
-  console.log(`   Registro  : ${config.CANAL_REGISTRO_ID}`);
-  console.log(`   Aprovação : ${config.CANAL_APROVACAO_ID}`);
-  console.log(`   Cargo     : ${config.CARGO_MEMBRO_ID}\n`);
-
-  await enviarOuAtualizarPainel();
-});
-
-// ─── Painel de Registro ───────────────────────────────────────────────────────
-
-async function enviarOuAtualizarPainel() {
+function salvarRegistroLocal(registro) {
   try {
-    const guild  = await client.guilds.fetch(config.GUILD_ID);
-    const canal  = await guild.channels.fetch(config.CANAL_REGISTRO_ID);
+    const dados = JSON.parse(fs.readFileSync(config.ARQUIVO_DADOS, "utf-8"));
+    if (!dados.registros) dados.registros = [];
+    dados.registros.unshift(registro);
+    fs.writeFileSync(config.ARQUIVO_DADOS, JSON.stringify(dados, null, 2), "utf-8");
+  } catch (err) {
+    console.error("⚠️ Erro ao salvar registro localmente:", err.message);
+  }
+}
 
-    // Tenta reutilizar a mensagem do painel já salva
-    if (dados.painelMensagemId) {
-      try {
-        const msg = await canal.messages.fetch(dados.painelMensagemId);
-        await msg.edit(embeds.criarPainelRegistro());
-        console.log("📋 Painel de registro atualizado.");
-        return;
-      } catch {
-        // Mensagem não encontrada, cria uma nova
+// Evento: Bot Conectado
+client.once(Events.ClientReady, async (c) => {
+  console.log("==================================================");
+  console.log(`✅ BOT ONLINE: ${c.user.tag}`);
+  console.log(`🏯 Facção: ${config.NOME_FACCAO}`);
+  console.log(`🛡️ Anti-Spam: ${config.COOLDOWN_MS / 1000} segundos`);
+  console.log("==================================================");
+
+  // Tenta enviar/atualizar o painel de registro automático
+  try {
+    const guild = c.guilds.cache.get(config.GUILD_ID);
+    if (!guild) {
+      console.warn(`⚠️ Servidor com ID ${config.GUILD_ID} não encontrado. Certifique-se de que o bot está nele!`);
+      return;
+    }
+
+    const canalRegistro = guild.channels.cache.get(config.CANAL_REGISTRO_ID);
+    if (canalRegistro && canalRegistro.isTextBased()) {
+      const embed = new EmbedBuilder()
+        .setColor(config.COR_PRINCIPAL)
+        .setAuthor({ name: guild.name, iconURL: guild.iconURL({ dynamic: true }) || undefined })
+        .setTitle(`🇯🇵 Registro Oficial — ${config.NOME_FACCAO}`)
+        .setDescription(`# Bem-vindo ao recrutamento da facção **${config.NOME_FACCAO}**!
+
+Para realizar o seu registro e obter seu cargo de Membro na facção, você deve clicar no botão abaixo e preencher o formulário.
+
+⚠️ **REQUISITOS IMPORTANTES:**
+> • Seu apelido no servidor será padronizado como **\`${config.PREFIXO_APELIDO} Nome | ID\`**.
+> • Preencha os campos com atenção (Nome, ID da cidade e Quem te recrutou).
+> • Há um sistema anti-spam de ${config.COOLDOWN_MS / 1000} segundos.
+
+👇 *Clique no botão abaixo para preencher o formulário de Cidadania!*`)
+        .setFooter({ text: `${config.NOME_FACCAO} • Sistema de Registro` })
+        .setTimestamp();
+
+      const botao = new ButtonBuilder()
+        .setCustomId("botao_registro_japao")
+        .setEmoji("🇯🇵")
+        .setLabel("Realizar Registro")
+        .setStyle(ButtonStyle.Success);
+
+      const row = new ActionRowBuilder().addComponents(botao);
+
+      // Limpa e envia para manter o chat organizado
+      const messages = await canalRegistro.messages.fetch({ limit: 10 });
+      const botMessages = messages.filter(m => m.author.id === c.user.id);
+      
+      if (botMessages.size > 0) {
+        await botMessages.first().edit({ embeds: [embed], components: [row] });
+        console.log("✅ Painel de Registro atualizado com sucesso no Discord.");
+      } else {
+        await canalRegistro.send({ embeds: [embed], components: [row] });
+        console.log("✅ Novo Painel de Registro enviado ao canal do Discord.");
       }
     }
-
-    // Limpa mensagens antigas do bot no canal para não acumular painéis
-    try {
-      const msgs = await canal.messages.fetch({ limit: 10 });
-      const doBot = msgs.filter((m) => m.author.id === client.user.id);
-      for (const m of doBot.values()) await m.delete().catch(() => {});
-    } catch {}
-
-    const msg = await canal.send(embeds.criarPainelRegistro());
-    dados.painelMensagemId = msg.id;
-    salvar();
-    console.log("📋 Painel de registro enviado.");
   } catch (err) {
-    console.error("❌ Erro ao enviar painel:", err.message);
+    console.error("⚠️ Ocorreu um erro ao gerar o painel inicial:", err.message);
   }
-}
+});
 
-// ─── Interações ───────────────────────────────────────────────────────────────
-
+// Evento: Tratamento de Interações (Botões e Modals)
 client.on(Events.InteractionCreate, async (interaction) => {
-  try {
-    // ── Botão: Abrir formulário de registro ──────────────────────────────────
-    if (interaction.isButton() && interaction.customId === "btn_abrir_registro") {
-      await handleBotaoRegistrar(interaction);
-      return;
+  // 1. CLIQUE NO BOTÃO "REALIZAR REGISTRO"
+  if (interaction.isButton() && interaction.customId === "botao_registro_japao") {
+    try {
+      // Verificar Anti-Spam
+      const tempoCooldown = cooldowns.get(interaction.user.id);
+      if (tempoCooldown && tempoCooldown > Date.now()) {
+        const segundosRestantes = Math.ceil((tempoCooldown - Date.now()) / 1000);
+        return interaction.reply({
+          content: `⏳ **Anti-Spam:** Por favor, aguarde **${segundosRestantes} segundos** para abrir o formulário novamente.`,
+          ephemeral: true
+        });
+      }
+
+      // Abre o Modal com as perguntas
+      const modal = new ModalBuilder()
+        .setCustomId("modal_registro_japao")
+        .setTitle(`Registro - ${config.NOME_FACCAO}`);
+
+      const inputNome = new TextInputBuilder()
+        .setCustomId("nome_jogo")
+        .setLabel("Seu Nome no Jogo / Personagem")
+        .setPlaceholder("Ex: Takashi Hayashi")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMinLength(2)
+        .setMaxLength(22);
+
+      const inputId = new TextInputBuilder()
+        .setCustomId("id_jogo")
+        .setLabel("Seu ID no Jogo (Cidade / Mental)")
+        .setPlaceholder("Ex: 1540")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(10);
+
+      const inputContratou = new TextInputBuilder()
+        .setCustomId("quem_contratou")
+        .setLabel("Quem realizou seu recrutamento?")
+        .setPlaceholder("Ex: Kenji Sato")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMinLength(2)
+        .setMaxLength(30);
+
+      const row1 = new ActionRowBuilder().addComponents(inputNome);
+      const row2 = new ActionRowBuilder().addComponents(inputId);
+      const row3 = new ActionRowBuilder().addComponents(inputContratou);
+
+      modal.addComponents(row1, row2, row3);
+      await interaction.showModal(modal);
+    } catch (err) {
+      console.error("Erro ao exibir modal de registro:", err.message);
     }
+  }
 
-    // ── Modal: Enviar dados de registro ──────────────────────────────────────
-    if (interaction.isModalSubmit() && interaction.customId === "modal_registro") {
-      await handleModalRegistro(interaction);
-      return;
+  // 2. RESPOSTA DO MODAL DE REGISTRO
+  if (interaction.isModalSubmit() && interaction.customId === "modal_registro_japao") {
+    try {
+      const nomeJogo = interaction.fields.getTextInputValue("nome_jogo").trim();
+      const idJogo = interaction.fields.getTextInputValue("id_jogo").trim();
+      const quemContratou = interaction.fields.getTextInputValue("quem_contratou").trim();
+
+      const apelidoGerado = `${config.PREFIXO_APELIDO} ${nomeJogo} | ${idJogo}`;
+
+      if (apelidoGerado.length > 32) {
+        return interaction.reply({
+          content: "❌ Seu nome mais a tag da facção excederam o limite de 32 caracteres do Discord. Reduza seu nome do jogo.",
+          ephemeral: true
+        });
+      }
+
+      const guild = interaction.guild;
+      if (!guild) return;
+
+      const idSolicitacao = "disc_" + Date.now();
+
+      // Salva em cache/banco local
+      salvarRegistroLocal({
+        id: idSolicitacao,
+        userId: interaction.user.id,
+        userTag: interaction.user.tag,
+        nomeJogo,
+        idJogo,
+        quemContratou,
+        status: "PENDENTE",
+        apelidoGerado,
+        data: new Date().toISOString()
+      });
+
+      // Aplica cooldown de anti-spam de 30s
+      cooldowns.set(interaction.user.id, Date.now() + config.COOLDOWN_MS);
+
+      // Envia ao canal de aprovação da Staff
+      const canalAprovacao = guild.channels.cache.get(config.CANAL_APROVACAO_ID);
+      if (!canalAprovacao) {
+        return interaction.reply({
+          content: "❌ Canal de aprovação da Staff não encontrado. Contate um administrador.",
+          ephemeral: true
+        });
+      }
+
+      const embedAprovacao = new EmbedBuilder()
+        .setColor(config.COR_PENDENTE)
+        .setTitle(`🏮 Nova Solicitação de Registro — ${config.NOME_FACCAO}`)
+        .setDescription(`O membro **${interaction.user.tag}** preencheu o formulário de recrutamento.`)
+        .addFields(
+          { name: "👤 Usuário Discord", value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+          { name: "🆔 Discord ID", value: `\`${interaction.user.id}\``, inline: true },
+          { name: "📝 Nome no Jogo", value: `**${nomeJogo}**`, inline: true },
+          { name: "🔢 ID no Jogo", value: `**${idJogo}**`, inline: true },
+          { name: "🤝 Recrutador", value: `**${quemContratou}**`, inline: true },
+          { name: "🏷️ Apelido Proposto", value: `\`${apelidoGerado}\``, inline: false }
+        )
+        .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }) || null)
+        .setFooter({ text: `${config.NOME_FACCAO} • Painel da Staff` })
+        .setTimestamp();
+
+      const btnAprovar = new ButtonBuilder()
+        .setCustomId(`staff_aprovar_${idSolicitacao}`)
+        .setEmoji("✅")
+        .setLabel("Aprovar")
+        .setStyle(ButtonStyle.Success);
+
+      const btnRecusar = new ButtonBuilder()
+        .setCustomId(`staff_recusar_${idSolicitacao}`)
+        .setEmoji("❌")
+        .setLabel("Recusar")
+        .setStyle(ButtonStyle.Danger);
+
+      const row = new ActionRowBuilder().addComponents(btnAprovar, btnRecusar);
+      await canalAprovacao.send({ embeds: [embedAprovacao], components: [row] });
+
+      await interaction.reply({
+        content: `✅ **Formulário enviado com sucesso!**\nSua solicitação de registro foi enviada para avaliação da Staff.\n\n**Apelido que será configurado:** \`${apelidoGerado}\`\nPor favor, aguarde a aprovação nos canais.`,
+        ephemeral: true
+      });
+
+    } catch (err) {
+      console.error("Erro no modal de registro:", err.message);
+      await interaction.reply({ content: "❌ Ocorreu um erro interno ao enviar o registro.", ephemeral: true }).catch(() => {});
     }
+  }
 
-    // ── Botão: Aprovar ────────────────────────────────────────────────────────
-    if (interaction.isButton() && interaction.customId.startsWith("btn_aprovar_")) {
-      await handleAprovar(interaction);
-      return;
-    }
+  // 3. EVENTO DE CLIQUE DO ADMINISTRADOR (APROVAR / RECUSAR)
+  if (interaction.isButton() && (interaction.customId.startsWith("staff_aprovar_") || interaction.customId.startsWith("staff_recusar_"))) {
+    try {
+      // Verificar Permissões da Staff
+      if (!interaction.memberPermissions.has(PermissionsBitField.Flags.ManageRoles) && !interaction.memberPermissions.has(PermissionsBitField.Flags.Administrator)) {
+        return interaction.reply({
+          content: "❌ **Sem permissão:** Apenas membros da Staff com permissão de Gerenciar Cargos podem avaliar registros.",
+          ephemeral: true
+        });
+      }
 
-    // ── Botão: Recusar ────────────────────────────────────────────────────────
-    if (interaction.isButton() && interaction.customId.startsWith("btn_recusar_")) {
-      await handleRecusar(interaction);
-      return;
-    }
+      const isAprovar = interaction.customId.startsWith("staff_aprovar_");
+      const idSolicitacao = interaction.customId.replace(isAprovar ? "staff_aprovar_" : "staff_recusar_", "");
 
-    // ── Comando: !painel (recria painel) ──────────────────────────────────────
-    // Tratado em messageCreate abaixo
+      // Lê arquivo de persistência
+      const dados = JSON.parse(fs.readFileSync(config.ARQUIVO_DADOS, "utf-8"));
+      const registro = dados.registros?.find(r => r.id === idSolicitacao);
 
-  } catch (err) {
-    console.error("❌ Erro na interação:", err.message);
-    const payload = { content: "❌ Ocorreu um erro interno. Tente novamente.", ephemeral: true };
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(payload).catch(() => {});
-    } else {
-      await interaction.reply(payload).catch(() => {});
+      if (!registro) {
+        return interaction.reply({
+          content: "⚠️ Solicitação não encontrada no banco de dados local.",
+          ephemeral: true
+        });
+      }
+
+      if (registro.status !== "PENDENTE") {
+        return interaction.reply({
+          content: `⚠️ Esta solicitação já foi respondida como **${registro.status}** anteriormente.`,
+          ephemeral: true
+        });
+      }
+
+      const guild = interaction.guild;
+      if (!guild) return;
+
+      const membroAlvo = await guild.members.fetch(registro.userId).catch(() => null);
+
+      if (isAprovar) {
+        registro.status = "APROVADO";
+        registro.avaliadoPor = interaction.user.tag;
+        registro.avaliadoEm = new Date().toISOString();
+
+        if (membroAlvo) {
+          // Atribui cargo de membro
+          const cargoMembro = await guild.roles.fetch(config.CARGO_MEMBRO_ID).catch(() => null);
+          if (cargoMembro) {
+            await membroAlvo.roles.add(cargoMembro).catch(err => {
+              console.error("Erro ao adicionar cargo:", err.message);
+            });
+          }
+
+          // Altera apelido
+          if (membroAlvo.id !== guild.ownerId) {
+            await membroAlvo.setNickname(registro.apelidoGerado).catch(err => {
+              console.warn("Sem permissão para alterar apelido:", err.message);
+            });
+          }
+
+          // Notifica por DM
+          await membroAlvo.send({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(config.COR_APROVADO)
+                .setTitle(`🇯🇵 Registro Aprovado — ${config.NOME_FACCAO}`)
+                .setDescription(`Olá **${membroAlvo.user.username}**! 👋
+
+Seu registro na facção **${config.NOME_FACCAO}** foi **APROVADO** pela nossa Staff!
+
+> ✅ **Apelido Atualizado:** \`${registro.apelidoGerado}\`
+> 🎖️ **Cargo Recebido:** Membro
+> 🔓 **Canais Liberados:** Divirta-se!`)
+                .setFooter({ text: `${config.NOME_FACCAO} • Registro Automático` })
+                .setTimestamp()
+            ]
+          }).catch(() => console.log(`DM fechada para ${registro.userTag}`));
+        }
+
+        // Atualiza a embed de aprovação
+        const embedEditado = EmbedBuilder.from(interaction.message.embeds[0])
+          .setColor(config.COR_APROVADO)
+          .setTitle(`✅ Registro Aprovado — ${config.NOME_FACCAO}`)
+          .addFields({
+            name: "👮 Avaliado por",
+            value: `<@${interaction.user.id}> (${interaction.user.tag})`,
+            inline: false
+          });
+
+        await interaction.update({ embeds: [embedEditado], components: [] });
+
+        // Envia log detalhada no canal de logs se configurado e for diferente
+        const canalLogs = guild.channels.cache.get(config.CANAL_LOGS_ID);
+        if (canalLogs && canalLogs.isTextBased() && config.CANAL_LOGS_ID !== config.CANAL_APROVACAO_ID) {
+          const embedLog = new EmbedBuilder()
+            .setColor(config.COR_APROVADO)
+            .setTitle("📝 Log de Registro Aprovado")
+            .addFields(
+              { name: "👤 Membro", value: `<@${registro.userId}>`, inline: true },
+              { name: "🏷️ Apelido", value: `\`${registro.apelidoGerado}\``, inline: true },
+              { name: "👮 Staff", value: `<@${interaction.user.id}>`, inline: true }
+            )
+            .setTimestamp();
+          await canalLogs.send({ embeds: [embedLog] }).catch(() => {});
+        }
+
+      } else {
+        // RECUSADO
+        registro.status = "RECUSADO";
+        registro.avaliadoPor = interaction.user.tag;
+        registro.avaliadoEm = new Date().toISOString();
+
+        if (membroAlvo) {
+          await membroAlvo.send({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(config.COR_RECUSADO)
+                .setTitle(`❌ Registro Recusado — ${config.NOME_FACCAO}`)
+                .setDescription(`Olá **${membroAlvo.user.username}**,
+
+Infelizmente sua solicitação de registro na facção **${config.NOME_FACCAO}** foi **recusada** pela administração.
+
+Caso queira refazer com dados corretos, basta clicar em registrar no canal novamente.`)
+                .setFooter({ text: `${config.NOME_FACCAO} • Registro Automático` })
+                .setTimestamp()
+            ]
+          }).catch(() => {});
+        }
+
+        const embedEditado = EmbedBuilder.from(interaction.message.embeds[0])
+          .setColor(config.COR_RECUSADO)
+          .setTitle(`❌ Registro Recusado — ${config.NOME_FACCAO}`)
+          .addFields({
+            name: "👮 Recusado por",
+            value: `<@${interaction.user.id}> (${interaction.user.tag})`,
+            inline: false
+          });
+
+        await interaction.update({ embeds: [embedEditado], components: [] });
+      }
+
+      // Salva no banco local
+      fs.writeFileSync(config.ARQUIVO_DADOS, JSON.stringify(dados, null, 2), "utf-8");
+
+    } catch (err) {
+      console.error("Erro ao processar botão da staff:", err.message);
+      await interaction.reply({ content: "❌ Ocorreu um erro ao avaliar.", ephemeral: true }).catch(() => {});
     }
   }
 });
 
-// ─── Botão Registrar ──────────────────────────────────────────────────────────
-
-async function handleBotaoRegistrar(interaction) {
-  const userId = interaction.user.id;
-
-  // Anti-spam
-  const espera = utils.checarCooldown(userId);
-  if (espera > 0) {
-    return interaction.reply({
-      content: `⏳ Você está enviando solicitações muito rápido. Aguarde **${espera}s** e tente novamente.`,
-      ephemeral: true,
-    });
-  }
-
-  // Blacklist
-  if (dados.blacklist.includes(userId)) {
-    return interaction.reply({
-      content: "🚫 Você está na blacklist e não pode se registrar.",
-      ephemeral: true,
-    });
-  }
-
-  // Já tem pendente
-  if (dados.pendentes[userId]) {
-    return interaction.reply({
-      content: "⏳ Você já possui uma solicitação pendente. Aguarde a análise da staff.",
-      ephemeral: true,
-    });
-  }
-
-  // Já aprovado (tem cargo)
-  const guild  = await interaction.client.guilds.fetch(config.GUILD_ID);
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (member && member.roles.cache.has(config.CARGO_MEMBRO_ID)) {
-    return interaction.reply({
-      content: "✅ Você já é membro registrado!",
-      ephemeral: true,
-    });
-  }
-
-  // Abre modal
-  const modal = new ModalBuilder()
-    .setCustomId("modal_registro")
-    .setTitle(`Registro — ${config.NOME_FACCAO}`);
-
-  const campoNome = new TextInputBuilder()
-    .setCustomId("input_nome_rp")
-    .setLabel("Nome RP")
-    .setPlaceholder("Ex: Hiroshi Tanaka")
-    .setStyle(TextInputStyle.Short)
-    .setMinLength(3)
-    .setMaxLength(40)
-    .setRequired(true);
-
-  const campoID = new TextInputBuilder()
-    .setCustomId("input_id_passaporte")
-    .setLabel("ID / Passaporte")
-    .setPlaceholder("Ex: 12345 ou BR-9876")
-    .setStyle(TextInputStyle.Short)
-    .setMinLength(2)
-    .setMaxLength(20)
-    .setRequired(true);
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(campoNome),
-    new ActionRowBuilder().addComponents(campoID)
-  );
-
-  await interaction.showModal(modal);
-}
-
-// ─── Modal Registro ───────────────────────────────────────────────────────────
-
-async function handleModalRegistro(interaction) {
-  await interaction.deferReply({ ephemeral: true });
-
-  const nomeRP       = interaction.fields.getTextInputValue("input_nome_rp").trim();
-  const idPassaporte = interaction.fields.getTextInputValue("input_id_passaporte").trim();
-  const userId       = interaction.user.id;
-
-  // Validações
-  const erroNome = utils.validarNomeRP(nomeRP);
-  if (erroNome) {
-    return interaction.editReply({ content: `❌ **Nome RP inválido:** ${erroNome}` });
-  }
-  const erroID = utils.validarIDPassaporte(idPassaporte);
-  if (erroID) {
-    return interaction.editReply({ content: `❌ **ID/Passaporte inválido:** ${erroID}` });
-  }
-
-  // Busca membro
-  const guild  = await interaction.client.guilds.fetch(config.GUILD_ID);
-  const member = await guild.members.fetch(userId).catch(() => null);
-  if (!member) {
-    return interaction.editReply({ content: "❌ Não foi possível identificar você no servidor." });
-  }
-
-  // Envia para canal de aprovação
-  const canalAprovacao = await guild.channels.fetch(config.CANAL_APROVACAO_ID).catch(() => null);
-  if (!canalAprovacao) {
-    return interaction.editReply({ content: "❌ Canal de aprovação não encontrado. Contate um administrador." });
-  }
-
-  const msgAprovacao = await canalAprovacao.send(
-    embeds.criarEmbedPendente(member, nomeRP, idPassaporte)
-  );
-
-  // Salva pendente
-  dados.pendentes[userId] = {
-    nomeRP,
-    idPassaporte,
-    msgId: msgAprovacao.id,
-    timestamp: Date.now(),
-  };
-  salvar();
-
-  await interaction.editReply({
-    content: [
-      "✅ **Solicitação enviada com sucesso!**",
-      "",
-      `**Nome RP:** ${nomeRP}`,
-      `**ID/Passaporte:** ${idPassaporte}`,
-      "",
-      "Aguarde a análise da staff. Você receberá uma mensagem privada com o resultado.",
-    ].join("\n"),
-  });
-
-  console.log(`📨 Solicitação de registro recebida: ${interaction.user.tag} | ${nomeRP} | ${idPassaporte}`);
-}
-
-// ─── Aprovar ──────────────────────────────────────────────────────────────────
-
-async function handleAprovar(interaction) {
-  await interaction.deferUpdate();
-
-  const targetId = interaction.customId.replace("btn_aprovar_", "");
-  const pendente = dados.pendentes[targetId];
-
-  if (!pendente) {
-    return interaction.followUp({ content: "⚠️ Esta solicitação já foi processada.", ephemeral: true });
-  }
-
-  const guild  = await interaction.client.guilds.fetch(config.GUILD_ID);
-  const member = await guild.members.fetch(targetId).catch(() => null);
-
-  if (!member) {
-    delete dados.pendentes[targetId];
-    salvar();
-    return interaction.followUp({ content: "⚠️ O usuário não está mais no servidor.", ephemeral: true });
-  }
-
-  const { nomeRP, idPassaporte } = pendente;
-  const novoApelido = `${config.PREFIXO_APELIDO} ${nomeRP} ${idPassaporte}`.slice(0, 32);
-
-  // Adiciona cargo
-  await member.roles.add(config.CARGO_MEMBRO_ID).catch((e) =>
-    console.error("❌ Erro ao adicionar cargo:", e.message)
-  );
-
-  // Altera apelido
-  await member.setNickname(novoApelido).catch((e) =>
-    console.error("❌ Erro ao alterar apelido:", e.message)
-  );
-
-  // DM ao aprovado
-  await member.send({ embeds: [embeds.criarEmbedAprovado(nomeRP, idPassaporte)] }).catch(() =>
-    console.warn(`⚠️ Não foi possível enviar DM para ${member.user.tag}`)
-  );
-
-  // Log
-  const staffMember = interaction.member;
-  dados.aprovados.push({
-    userId: targetId,
-    nomeRP,
-    idPassaporte,
-    staffId: staffMember.id,
-    timestamp: Date.now(),
-  });
-  delete dados.pendentes[targetId];
-  salvar();
-
-  // Edita mensagem de aprovação (remove botões)
-  await interaction.message
-    .edit({
-      embeds: [
-        interaction.message.embeds[0],
-        embeds.criarEmbedLog("aprovado", staffMember, member, nomeRP, idPassaporte),
-      ],
-      components: [],
-    })
-    .catch(() => {});
-
-  await interaction.followUp({
-    content: `✅ **${member.user.tag}** foi aprovado como \`${novoApelido}\`.`,
-    ephemeral: true,
-  });
-
-  console.log(`✅ Aprovado: ${member.user.tag} | ${nomeRP} | Staff: ${staffMember.user.tag}`);
-}
-
-// ─── Recusar ──────────────────────────────────────────────────────────────────
-
-async function handleRecusar(interaction) {
-  await interaction.deferUpdate();
-
-  const targetId = interaction.customId.replace("btn_recusar_", "");
-  const pendente = dados.pendentes[targetId];
-
-  if (!pendente) {
-    return interaction.followUp({ content: "⚠️ Esta solicitação já foi processada.", ephemeral: true });
-  }
-
-  const guild  = await interaction.client.guilds.fetch(config.GUILD_ID);
-  const member = await guild.members.fetch(targetId).catch(() => null);
-
-  const { nomeRP, idPassaporte } = pendente;
-
-  // DM ao recusado
-  if (member) {
-    await member.send({ embeds: [embeds.criarEmbedRecusado(nomeRP)] }).catch(() =>
-      console.warn(`⚠️ Não foi possível enviar DM para ${member?.user?.tag}`)
-    );
-  }
-
-  // Log
-  const staffMember = interaction.member;
-  dados.recusados.push({
-    userId: targetId,
-    nomeRP,
-    idPassaporte,
-    staffId: staffMember.id,
-    timestamp: Date.now(),
-  });
-  delete dados.pendentes[targetId];
-  salvar();
-
-  // Edita mensagem (remove botões)
-  await interaction.message
-    .edit({
-      embeds: [
-        interaction.message.embeds[0],
-        embeds.criarEmbedLog("recusado", staffMember, member ?? { id: targetId, user: { tag: targetId } }, nomeRP, idPassaporte),
-      ],
-      components: [],
-    })
-    .catch(() => {});
-
-  await interaction.followUp({
-    content: `❌ Solicitação de **${member?.user?.tag ?? targetId}** foi recusada.`,
-    ephemeral: true,
-  });
-
-  console.log(`❌ Recusado: ${targetId} | ${nomeRP} | Staff: ${staffMember.user.tag}`);
-}
-
-// ─── Comando de prefixo: !painel ─────────────────────────────────────────────
-
-client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot) return;
-  if (!message.guild) return;
-  if (message.guild.id !== config.GUILD_ID) return;
-
-  if (message.content.toLowerCase() === "!painel") {
-    // Apenas quem pode gerenciar mensagens
-    if (!message.member.permissions.has("ManageMessages")) {
-      return message.reply("❌ Você não tem permissão para usar este comando.");
-    }
-    dados.painelMensagemId = null;
-    salvar();
-    await enviarOuAtualizarPainel();
-    await message.reply("✅ Painel recriado com sucesso!").then((m) => setTimeout(() => m.delete().catch(() => {}), 5000));
-    return;
-  }
-
-  if (message.content.toLowerCase() === "!blacklist") {
-    if (!message.member.permissions.has("Administrator")) return;
-    const mencionado = message.mentions.users.first();
-    if (!mencionado) return message.reply("Use: `!blacklist @usuário`");
-    if (dados.blacklist.includes(mencionado.id)) {
-      dados.blacklist = dados.blacklist.filter((id) => id !== mencionado.id);
-      salvar();
-      return message.reply(`✅ **${mencionado.tag}** removido da blacklist.`);
-    }
-    dados.blacklist.push(mencionado.id);
-    salvar();
-    return message.reply(`🚫 **${mencionado.tag}** adicionado à blacklist.`);
-  }
+// Tratamento de Erros Globais (Anti-Crash)
+process.on("unhandledRejection", (reason) => {
+  console.error("⚠️ [ANTI-CRASH] Unhandled Rejection:", reason);
 });
 
-// ─── Tratamento de erros globais ──────────────────────────────────────────────
-
-process.on("unhandledRejection", (err) => {
-  console.error("🔥 Unhandled Rejection:", err.message);
-});
 process.on("uncaughtException", (err) => {
-  console.error("💥 Uncaught Exception:", err.message);
+  console.error("⚠️ [ANTI-CRASH] Uncaught Exception:", err);
 });
 
-// ─── Login ────────────────────────────────────────────────────────────────────
-
-client.login(process.env.DISCORD_TOKEN).catch((err) => {
-  console.error("❌ Falha ao fazer login:", err.message);
-  console.error("   Verifique se o DISCORD_TOKEN no arquivo .env está correto.");
-  process.exit(1);
-});
+// Inicia sessão no Discord
+client.login(TOKEN);
