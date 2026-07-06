@@ -1,6 +1,5 @@
 require('dotenv').config();
 
-client.login(...);
 const {
   Client,
   GatewayIntentBits,
