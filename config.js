@@ -4,8 +4,8 @@ module.exports = {
   CANAL_APROVACAO_ID: "1495790507182522450",  // canal onde a staff vê e aprova/recusa
   CANAL_LOGS_ID: "1495178025602515177",
   CARGO_MEMBRO_ID: "1495178024759332915",
-  PREFIXO_APELIDO: "|MEM|",
-  NOME_FACCAO: "Rac do Japão",
+  PREFIXO_APELIDO: "[M}",
+  NOME_FACCAO: "Rec do Japão",
   COOLDOWN_MS: 30000, // 30 segundos de anti-spam
 
   // Cores dos embeds
