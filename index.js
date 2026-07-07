@@ -219,11 +219,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       // Aplica cooldown de anti-spam de 30s
       cooldowns.set(interaction.user.id, Date.now() + config.COOLDOWN_MS);
 
-      // Envia ao canal de aprovação da Staff
+      // Envia ao canal de aprovação da Gerencia
       const canalAprovacao = guild.channels.cache.get(config.CANAL_APROVACAO_ID);
       if (!canalAprovacao) {
         return interaction.reply({
-          content: "❌ Canal de aprovação da Staff não encontrado. Contate um administrador.",
+          content: "❌ Canal de aprovação da Gerencia não encontrado. Contate um administrador.",
           ephemeral: true
         });
       }
@@ -241,17 +241,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           { name: "🏷️ Apelido Proposto", value: `\`${apelidoGerado}\``, inline: false }
         )
         .setThumbnail(interaction.user.displayAvatarURL({ dynamic: true }) || null)
-        .setFooter({ text: `${config.NOME_FACCAO} • Painel da Staff` })
+        .setFooter({ text: `${config.NOME_FACCAO} • Painel da Gerencia` })
         .setTimestamp();
 
       const btnAprovar = new ButtonBuilder()
-        .setCustomId(`staff_aprovar_${idSolicitacao}`)
+        .setCustomId(`gerencia_aprovar_${idSolicitacao}`)
         .setEmoji("✅")
         .setLabel("Aprovar")
         .setStyle(ButtonStyle.Success);
 
       const btnRecusar = new ButtonBuilder()
-        .setCustomId(`staff_recusar_${idSolicitacao}`)
+        .setCustomId(`gerencia_recusar_${idSolicitacao}`)
         .setEmoji("❌")
         .setLabel("Recusar")
         .setStyle(ButtonStyle.Danger);
@@ -260,7 +260,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await canalAprovacao.send({ embeds: [embedAprovacao], components: [row] });
 
       await interaction.reply({
-        content: `✅ **Formulário enviado com sucesso!**\nSua solicitação de registro foi enviada para avaliação da Staff.\n\n**Apelido que será configurado:** \`${apelidoGerado}\`\nPor favor, aguarde a aprovação nos canais.`,
+        content: `✅ **Formulário enviado com sucesso!**\nSua solicitação de registro foi enviada para avaliação da Gerencia.\n\n**Apelido que será configurado:** \`${apelidoGerado}\`\nPor favor, aguarde a aprovação nos canais.`,
         ephemeral: true
       });
 
@@ -270,19 +270,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   }
 
-  // 3. EVENTO DE CLIQUE DO ADMINISTRADOR (APROVAR / RECUSAR)
-  if (interaction.isButton() && (interaction.customId.startsWith("staff_aprovar_") || interaction.customId.startsWith("staff_recusar_"))) {
+  // 3. EVENTO DE CLIQUE DA GERENCIA (APROVAR / RECUSAR)
+  if (interaction.isButton() && (interaction.customId.startsWith("gerencia_aprovar_") || interaction.customId.startsWith("gerencia_recusar_"))) {
     try {
-      // Verificar Permissões da Staff
+      // Verificar Permissões da Gerencia
       if (!interaction.memberPermissions.has(PermissionsBitField.Flags.ManageRoles) && !interaction.memberPermissions.has(PermissionsBitField.Flags.Administrator)) {
         return interaction.reply({
-          content: "❌ **Sem permissão:** Apenas membros da Staff com permissão de Gerenciar Cargos podem avaliar registros.",
+          content: "❌ **Sem permissão:** Apenas membros da Japão com permissão de Gerenciar Cargos podem avaliar registros.",
           ephemeral: true
         });
       }
 
-      const isAprovar = interaction.customId.startsWith("staff_aprovar_");
-      const idSolicitacao = interaction.customId.replace(isAprovar ? "staff_aprovar_" : "staff_recusar_", "");
+      const isAprovar = interaction.customId.startsWith("gerencia_aprovar_");
+      const idSolicitacao = interaction.customId.replace(isAprovar ? "gerencia_aprovar_" : "gerencia_recusar_", "");
 
       // Lê arquivo de persistência
       const dados = JSON.parse(fs.readFileSync(config.ARQUIVO_DADOS, "utf-8"));
@@ -336,7 +336,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 .setTitle(`🇯🇵 Registro Aprovado — ${config.NOME_FACCAO}`)
                 .setDescription(`Olá **${membroAlvo.user.username}**! 👋
 
-Seu registro na facção **${config.NOME_FACCAO}** foi **APROVADO** pela nossa Staff!
+Seu registro na facção **${config.NOME_FACCAO}** foi **APROVADO** pela nossa Gerencia!
 
 > ✅ **Apelido Atualizado:** \`${registro.apelidoGerado}\`
 > 🎖️ **Cargo Recebido:** Membro
@@ -368,7 +368,7 @@ Seu registro na facção **${config.NOME_FACCAO}** foi **APROVADO** pela nossa S
             .addFields(
               { name: "👤 Membro", value: `<@${registro.userId}>`, inline: true },
               { name: "🏷️ Apelido", value: `\`${registro.apelidoGerado}\``, inline: true },
-              { name: "👮 Staff", value: `<@${interaction.user.id}>`, inline: true }
+              { name: "👮 Gerencia", value: `<@${interaction.user.id}>`, inline: true }
             )
             .setTimestamp();
           await canalLogs.send({ embeds: [embedLog] }).catch(() => {});
@@ -413,7 +413,7 @@ Caso queira refazer com dados corretos, basta clicar em registrar no canal novam
       fs.writeFileSync(config.ARQUIVO_DADOS, JSON.stringify(dados, null, 2), "utf-8");
 
     } catch (err) {
-      console.error("Erro ao processar botão da staff:", err.message);
+      console.error("Erro ao processar botão da Gerencia:", err.message);
       await interaction.reply({ content: "❌ Ocorreu um erro ao avaliar.", ephemeral: true }).catch(() => {});
     }
   }
