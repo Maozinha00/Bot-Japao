@@ -1,147 +1,87 @@
-const {
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require("discord.js");
-
+"const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const config = require("./config");
 
-// ======================================================================
-// PAINEL DE REGISTRO
-// ======================================================================
+// ─── Painel de Registro ───────────────────────────────────────────────────────
 
 function criarPainelRegistro() {
   const embed = new EmbedBuilder()
     .setColor(config.COR_PRINCIPAL)
-    .setAuthor({
-      name: `${config.NOME_FACCAO} • Sistema de Registro`,
-    })
-    .setTitle("📋 Registro Oficial")
+    .setTitle(📋 Registro — ${config.NOME_FACCAO})
     .setDescription(
       [
-        "# 👋 Bem-vindo!",
+        > Bem-vindo ao sistema de registro da **${config.NOME_FACCAO}**!,
         "",
-        `Você está iniciando seu registro para entrar na **${config.NOME_FACCAO}**.`,
+        "Para se tornar um membro oficial, clique no botão abaixo e preencha o formulário com:",
+        "‣ **Nome RP** — seu nome no roleplay",
+        "‣ **ID / Passaporte** — seu identificador no servidor",
         "",
-        "### 📌 Informações necessárias",
-        "• 🎭 Nome RP",
-        "• 🪪 ID / Passaporte",
+        "Sua solicitação será analisada pela **Gerencia** e você receberá uma notificação no privado com o resultado.",
         "",
-        "> Após enviar sua solicitação, ela será analisada pela **Gerência**.",
-        "",
-        "### ⚠️ Importante",
-        "• Deixe sua DM aberta.",
-        "• Utilize informações corretas.",
-        "• Aguarde o retorno da equipe.",
+        "⚠️ Certifique-se de que suas **mensagens diretas** estão abertas.",
       ].join("\n")
     )
-    .setFooter({
-      text: `${config.NOME_FACCAO} • Registro Automático`,
-    })
+    .setFooter({ text: ${config.NOME_FACCAO} • Sistema de Registro Automático })
     .setTimestamp();
 
-  const botoes = new ActionRowBuilder().addComponents(
+  const botao = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("btn_abrir_registro")
-      .setLabel("Realizar Registro")
-      .setEmoji("📝")
+      .setLabel("📝  Registrar")
       .setStyle(ButtonStyle.Primary)
   );
 
-  return {
-    embeds: [embed],
-    components: [botoes],
-  };
+  return { embeds: [embed], components: [botao] };
 }
 
-// ======================================================================
-// SOLICITAÇÃO PARA GERÊNCIA
-// ======================================================================
+// ─── Solicitação de Aprovação (canal da Gerencia) ────────────────────────────────
 
 function criarEmbedPendente(member, nomeRP, idPassaporte) {
   const embed = new EmbedBuilder()
     .setColor(config.COR_PENDENTE)
-    .setAuthor({
-      name: "Nova Solicitação de Registro",
-      iconURL: member.user.displayAvatarURL({ dynamic: true }),
-    })
-    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 512 }))
+    .setTitle("🔔 Nova Solicitação de Registro")
+    .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 128 }))
     .addFields(
-      {
-        name: "👤 Discord",
-        value: `${member.user.tag}\n\`${member.user.id}\``,
-        inline: false,
-      },
-      {
-        name: "🎭 Nome RP",
-        value: `\`${nomeRP}\``,
-        inline: true,
-      },
-      {
-        name: "🪪 Passaporte",
-        value: `\`${idPassaporte}\``,
-        inline: true,
-      }
+      { name: "👤 Usuário Discord", value: ${member.user.tag} (${member.user.id}), inline: false },
+      { name: "🎭 Nome RP",         value: nomeRP,        inline: true  },
+      { name: "🪪 ID / Passaporte", value: idPassaporte,  inline: true  }
     )
-    .setDescription(
-      "A solicitação aguarda análise da **Gerência**.\n\nEscolha uma das opções abaixo."
-    )
-    .setFooter({
-      text: "Sistema Automático de Registro",
-    })
+    .setFooter({ text: "Use os botões abaixo para aprovar ou recusar." })
     .setTimestamp();
 
   const botoes = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`btn_aprovar_${member.id}`)
-      .setLabel("Aprovar")
-      .setEmoji("✅")
+      .setCustomId(btn_aprovar_${member.id})
+      .setLabel("✅  Aprovar")
       .setStyle(ButtonStyle.Success),
-
     new ButtonBuilder()
-      .setCustomId(`btn_recusar_${member.id}`)
-      .setLabel("Recusar")
-      .setEmoji("❌")
+      .setCustomId(btn_recusar_${member.id})
+      .setLabel("❌  Recusar")
       .setStyle(ButtonStyle.Danger)
   );
 
-  return {
-    embeds: [embed],
-    components: [botoes],
-  };
+  return { embeds: [embed], components: [botoes] };
 }
 
-// ======================================================================
-// DM APROVADO
-// ======================================================================
+// ─── DM — Aprovado ────────────────────────────────────────────────────────────
 
 function criarEmbedAprovado(nomeRP, idPassaporte) {
   return new EmbedBuilder()
     .setColor(config.COR_APROVADO)
-    .setTitle("🎉 Registro Aprovado")
+    .setTitle("✅ Registro Aprovado!")
     .setDescription(
       [
-        "Parabéns!",
+        Parabéns! Seu registro na **${config.NOME_FACCAO}** foi **aprovado** pela Gerencia.,
         "",
-        `Seu registro na **${config.NOME_FACCAO}** foi aprovado com sucesso.`,
+        **Nome RP:** ${nomeRP},
+        **ID/Passaporte:** ${idPassaporte},
         "",
-        "### 📄 Seus dados",
-        `🎭 **Nome RP:** \`${nomeRP}\``,
-        `🪪 **Passaporte:** \`${idPassaporte}\``,
-        "",
-        "✅ Seu apelido foi atualizado.",
-        "✅ Seu cargo foi configurado.",
-        "",
-        "Seja bem-vindo(a)! Desejamos um ótimo RP. ❤️",
+        "Seu cargo e apelido foram configurados automaticamente. Bem-vindo(a)! 🎉",
       ].join("\n")
     )
     .setTimestamp();
 }
 
-// ======================================================================
-// DM RECUSADO
-// ======================================================================
+// ─── DM — Recusado ────────────────────────────────────────────────────────────
 
 function criarEmbedRecusado(nomeRP) {
   return new EmbedBuilder()
@@ -149,69 +89,29 @@ function criarEmbedRecusado(nomeRP) {
     .setTitle("❌ Registro Recusado")
     .setDescription(
       [
-        `Sua solicitação para entrar na **${config.NOME_FACCAO}** foi recusada.`,
+        Infelizmente seu registro na **${config.NOME_FACCAO}** foi **recusado** pela Gerencia .,
         "",
-        `🎭 **Nome RP:** \`${nomeRP}\``,
+        **Nome RP tentado:** ${nomeRP},
         "",
-        "Caso acredite que houve algum erro, entre em contato com um membro da Gerência.",
+        "Caso acredite que houve um engano, entre em contato com a liderança.",
       ].join("\n")
     )
     .setTimestamp();
 }
 
-// ======================================================================
-// LOGS
-// ======================================================================
+// ─── Embed de Log ─────────────────────────────────────────────────────────────
 
-function criarEmbedLog(
-  tipo,
-  staffMember,
-  targetMember,
-  nomeRP,
-  idPassaporte
-) {
+function criarEmbedLog(tipo, staffMember, targetMember, nomeRP, idPassaporte) {
   const aprovado = tipo === "aprovado";
-
   return new EmbedBuilder()
-    .setColor(
-      aprovado ? config.COR_APROVADO : config.COR_RECUSADO
-    )
-    .setTitle(
-      aprovado
-        ? "📗 Registro Aprovado"
-        : "📕 Registro Recusado"
-    )
-    .setThumbnail(targetMember.user.displayAvatarURL({ dynamic: true }))
+    .setColor(aprovado ? config.COR_APROVADO : config.COR_RECUSADO)
+    .setTitle(aprovado ? "📗 Registro Aprovado" : "📕 Registro Recusado")
     .addFields(
-      {
-        name: "👤 Usuário",
-        value: `${targetMember.user.tag}\n\`${targetMember.id}\``,
-        inline: false,
-      },
-      {
-        name: "👮 Responsável",
-        value: `${staffMember.user.tag}`,
-        inline: false,
-      },
-      {
-        name: "🎭 Nome RP",
-        value: `\`${nomeRP}\``,
-        inline: true,
-      },
-      {
-        name: "🪪 Passaporte",
-        value: `\`${idPassaporte}\``,
-        inline: true,
-      },
-      {
-        name: "📌 Resultado",
-        value: aprovado ? "✅ Aprovado" : "❌ Recusado",
-        inline: true,
-      }
+      { name: "Membro",       value: ${targetMember.user.tag} (${targetMember.id}), inline: true },
+      { name: "Gerente",        value: ${staffMember.user.tag},                       inline: true },
+      { name: "Nome RP",      value: nomeRP,                                          inline: true },
+      { name: "ID/Passaporte",value: idPassaporte,                                    inline: true }
     )
-    .setFooter({
-      text: "Sistema Automático de Registro",
-    })
     .setTimestamp();
 }
 
@@ -221,4 +121,4 @@ module.exports = {
   criarEmbedAprovado,
   criarEmbedRecusado,
   criarEmbedLog,
-};
+};"
