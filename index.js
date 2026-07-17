@@ -1,12 +1,15 @@
 /**
- * 🐺 HUNTERS BOT - SCRIPT OFICIAL v2.6 (UPDATED) 🐺
+ * 🐺 HUNTERS BOT - SCRIPT OFICIAL v2.6 🐺
  * Desenvolvido para o clã/facção HUNTERS.
  * 
  * Sincronização em tempo real de manufatura, vendas e retiradas de insumos.
- * NOVIDADE v2.6: Botão e Modal para Gerente realizar retirada de Aço!
+ * NOVIDADE v2.6: 
+ *   - Catálogo completo de Armas, Acessórios, Caixas e Munições integrados.
+ *   - Desconto máximo ajustado para 15% com a flag '--desconto'.
+ *   - Botão interativo no painel e janela (Modal) para Gerentes retirarem aço com segurança.
  * 
- * Requisitos: Node.js v18+ (usa fetch nativo, sem necessidade de dependências pesadas!)
- * Dependências: npm install discord.js dotenv
+ * Requisitos: Node.js v18+ (usa fetch nativo!)
+ * Dependências: discord.js v14+, dotenv
  */
 
 require('dotenv').config();
@@ -24,8 +27,8 @@ const {
 } = require('discord.js');
 
 const DISCORD_TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
-const ERP_API_URL = process.env.ERP_API_URL || "SUA_URL_DO_ERP_AQUI"; 
-const GERENTE_ROLE_ID = "123456789012345678"; // ID do cargo Gerente do seu servidor Discord
+const ERP_API_URL = process.env.ERP_API_URL || "SUA_URL_DO_ERP_AQUI"; // URL do seu ERP Hunters
+const GERENTE_ROLE_ID = "1523277774436171796"; // Substitua pelo ID real do cargo de Gerente no seu Discord
 
 if (!DISCORD_TOKEN) {
   console.error("❌ ERRO: O token do bot (DISCORD_TOKEN ou TOKEN) não foi configurado!");
@@ -41,22 +44,41 @@ const client = new Client({
   ]
 });
 
-// Banco de dados dos armamentos da Hunters
+// Banco de dados oficial de itens e armamentos Hunters
 const ITENS_DB = {
+  // --- ARMAS ---
   ak47: { name: "AK-47", steel: 2700, value: 35000 },
   awp: { name: "AWP", steel: 3000, value: 65000 },
   m16: { name: "M16", steel: 2700, value: 35000 },
-  sawedoff: { name: "Sawed-Off", steel: 1200, value: 20000 },
+  sawedoff: { name: "Sawed-Off Shotgun", steel: 1200, value: 20000 },
   glock17: { name: "Glock 17", steel: 120, value: 5000 },
   tec9: { name: "TEC-9", steel: 900, value: 15000 },
   taser: { name: "Taser", steel: 700, value: 10000 },
-  box556: { name: "Box 5.56", steel: 120, value: 5000 },
-  box308: { name: "Box .308", steel: 200, value: 5000 }
+
+  // --- ACESSÓRIOS ---
+  silenciador: { name: "Silenciador", steel: 20, value: 2000 },
+  carregador_est: { name: "Carregador Estendido", steel: 25, value: 3000 },
+  grip: { name: "Grip", steel: 30, value: 3000 },
+  lanterna: { name: "Lanterna", steel: 30, value: 2000 },
+
+  // --- CAIXAS DE MUNICAO ---
+  box_pistola: { name: "Box M. Pistola", steel: 40, value: 2000 },
+  box_sub: { name: "Box M. Sub", steel: 80, value: 3000 },
+  box_escopeta: { name: "Box M. Escopeta", steel: 100, value: 4000 },
+  box556: { name: "Box M. 5.56", steel: 120, value: 5000 },
+  box308: { name: "Box M. .308", steel: 200, value: 5000 },
+
+  // --- MUNIÇÕES INDIVIDUAIS (CAIXAS COM 10) ---
+  muni_pistola: { name: "Munição Pistola (10x)", steel: 10, value: 2000 },
+  muni_smg: { name: "Munição SMG (10x)", steel: 20, value: 3000 },
+  muni_escopeta: { name: "Munição Escopeta (10x)", steel: 25, value: 4000 },
+  muni_fuzil: { name: "Munição Fuzil (10x)", steel: 30, value: 5000 }
 };
 
 const formatNumber = (num) => Number(num).toLocaleString("pt-BR");
 const formatMoney = (num) => `R$ ${formatNumber(num)}`;
 
+// Consulta os dados atuais do portal ERP Hunters
 async function fetchErpData() {
   try {
     const res = await fetch(`${ERP_API_URL}/api/data`);
@@ -104,7 +126,7 @@ client.on('messageCreate', async (message) => {
       .setFooter({ text: "Hunters Management ERP", iconURL: client.user.displayAvatarURL() })
       .setTimestamp();
 
-    // v2.6: Painel com botões incluindo o novo botão "Retirar Aço 📤"
+    // Linha de botões incluindo o novo botão interativo "Retirar Aço 📤"
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('btn_estoque').setLabel('Estoque 📦').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('btn_caixa').setLabel('Caixa 🏦').setStyle(ButtonStyle.Success),
@@ -122,13 +144,13 @@ client.on('messageCreate', async (message) => {
     const descArg = args[2];
 
     if (!itemArg || !qtdArg) {
-      return message.reply("⚠️ **Uso correto:** `!venda <item> <quantidade> [--desconto]`\nExemplo: `!venda ak47 5`");
+      return message.reply("⚠️ **Uso correto:** `!venda <item> <quantidade> [--desconto]`\nExemplo: `!venda ak47 5` ou `!venda box556 10 --desconto`");
     }
 
     const itemKey = itemArg.toLowerCase();
     const item = ITENS_DB[itemKey];
     if (!item) {
-      return message.reply(`❌ **Item inválido!** Opções: ${Object.keys(ITENS_DB).join(", ")}`);
+      return message.reply(`❌ **Item inválido!** Opções válidas:\n\`${Object.keys(ITENS_DB).join(", ")}\``);
     }
 
     const qty = parseInt(qtdArg);
@@ -162,11 +184,11 @@ client.on('messageCreate', async (message) => {
         .setColor("#10B981")
         .setDescription(`👤 Vendedor: <@${v.userId}>\n🔫 Equipamento: **${v.item}** (${v.quantidade}x)\n🛠️ Aço consumido: ${formatNumber(v.aco)} kg`)
         .addFields(
-          { name: "💰 Faturamento Bruto", value: `**${formatMoney(v.total)}**`, inline: true },
+          { name: "💰 Faturamento Bruto (100%)", value: `**${formatMoney(v.total)}**`, inline: true },
           { name: "🏦 Entrada no Caixa (70%)", value: formatMoney(v.cla), inline: true },
           { name: "💸 Comissão Recebida (30%)", value: formatMoney(v.membro), inline: true }
         )
-        .setFooter({ text: "Sincronizado instantaneamente via API Link" })
+        .setFooter({ text: "Sincronizado instantaneamente via ERP Link • Desconto Máx: 15%" })
         .setTimestamp();
 
       return message.reply({ embeds: [embed] });
@@ -175,16 +197,17 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // COMANDO: !retirar <quantidade> (Fallback caso queiram usar no chat)
+  // COMANDO: !retirar <quantidade> (Comando de fallback direto no chat)
   if (command === 'retirar') {
     const isManager = message.member.roles.cache.has(GERENTE_ROLE_ID) || message.member.permissions.has(PermissionFlagsBits.Administrator);
-    
     if (!isManager) {
-      return message.reply("❌ **Acesso Negado:** Apenas Gerentes do clã têm permissão para retirar aço.");
+      return message.reply("❌ **Acesso Negado:** Apenas Gerentes ou Administradores podem retirar aço.");
     }
 
-    const quantidade = parseInt(args[0]);
-    if (isNaN(quantidade) || quantidade <= 0) {
+    const qtyArg = args[0];
+    const qty = parseInt(qtyArg);
+
+    if (isNaN(qty) || qty <= 0) {
       return message.reply("⚠️ **Uso correto:** `!retirar <quantidade>`\nExemplo: `!retirar 5000`");
     }
 
@@ -195,23 +218,24 @@ client.on('messageCreate', async (message) => {
         body: JSON.stringify({
           userId: message.author.id,
           userName: message.author.username,
-          quantidade: quantidade,
-          motivo: "Retirada de aço direta via comando de chat"
+          quantidade: qty,
+          motivo: "Retirada via comando de chat Discord"
         })
       });
 
       const result = await response.json();
       if (!response.ok) {
-        return message.reply(`❌ **Erro na operação:** ${result.error || "Rejeitado pelo ERP."}`);
+        return message.reply(`❌ **Erro na operação:** ${result.error || "Operação rejeitada."}`);
       }
 
       const embed = new EmbedBuilder()
-        .setTitle("📤 RETIRADA DE AÇO AUTORIZADA!")
+        .setTitle("📤 AÇO RETIRADO DO ESTOQUE!")
         .setColor("#EF4444")
-        .setDescription(`👤 Autor: <@${message.author.id}>\n📉 Quantidade sacada: **${formatNumber(quantidade)} kg**\n📋 Motivo: _Retirada direta por comando de chat_`)
+        .setDescription(`👤 Gerente Responsável: <@${message.author.id}>\n📉 Quantidade: **${formatNumber(qty)} kg**\n📋 Motivo: _Retirada via comando de chat Discord_`)
         .addFields(
-          { name: "📦 Estoque de Aço Atual", value: `**${formatNumber(result.estoque)} kg**`, inline: true }
+          { name: "📦 Estoque de Aço Restante", value: `**${formatNumber(result.estoque)} kg**` }
         )
+        .setFooter({ text: "Lançamento Auditado no ERP Hunters" })
         .setTimestamp();
 
       return message.reply({ embeds: [embed] });
@@ -251,9 +275,10 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Suporte a botões e modais interativos
+// Suporte a interações de botões e modais (Modal de Retirada)
 client.on('interactionCreate', async (interaction) => {
-  // 1. LIDAR COM CLIQUE EM BOTÕES DO PAINEL
+  
+  // 1. LIDAR COM CLIQUES EM BOTÕES DO PAINEL
   if (interaction.isButton()) {
     const erpData = await fetchErpData();
     if (!erpData) return interaction.reply({ content: "❌ Erro ao conectar ao ERP.", ephemeral: true });
@@ -280,10 +305,9 @@ client.on('interactionCreate', async (interaction) => {
       });
     }
 
-    // NOVO v2.6: Botão para Gerente Retirar Aço
+    // BOTÃO: Retirar Aço (Abre o Modal interativo no Discord)
     if (interaction.customId === 'btn_retirar_aco') {
       const member = interaction.member;
-      // Verifica se o usuário tem o cargo de gerente configurado ou se é administrador
       const isManager = member.roles.cache.has(GERENTE_ROLE_ID) || member.permissions.has(PermissionFlagsBits.Administrator);
 
       if (!isManager) {
@@ -293,11 +317,12 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
-      // Criação de Modal Dinâmico
+      // Criação da janela popup (Modal)
       const modal = new ModalBuilder()
         .setCustomId('modal_retirar_aco')
         .setTitle('🐺 Retirada de Aço — Hunters');
 
+      // Campos de Entrada do formulário
       const qtyInput = new TextInputBuilder()
         .setCustomId('retirar_qtd')
         .setLabel('Quantidade de Aço a retirar (kg)')
@@ -309,18 +334,19 @@ client.on('interactionCreate', async (interaction) => {
         .setCustomId('retirar_motivo')
         .setLabel('Motivo do Saque')
         .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder('Ex: Fabricação de coletes balísticos para ação contra facção rival')
+        .setPlaceholder('Ex: Fabricação de coletes balísticos para ação do clã')
         .setRequired(true);
 
       const row1 = new ActionRowBuilder().addComponents(qtyInput);
       const row2 = new ActionRowBuilder().addComponents(reasonInput);
       modal.addComponents(row1, row2);
 
+      // Exibe a janela de modal na tela do Gerente
       await interaction.showModal(modal);
     }
   }
 
-  // 2. LIDAR COM ENVIO DO FORMULÁRIO MODAL (SUBMIT)
+  // 2. LIDAR COM ENVIO (SUBMIT) DO FORMULÁRIO DO MODAL
   if (interaction.isModalSubmit() && interaction.customId === 'modal_retirar_aco') {
     const quantidade = parseInt(interaction.fields.getTextInputValue('retirar_qtd'));
     const motivo = interaction.fields.getTextInputValue('retirar_motivo');
@@ -362,7 +388,7 @@ client.on('interactionCreate', async (interaction) => {
         .setFooter({ text: "Sincronizado via ERP Hunters API • Lançamento Auditado" })
         .setTimestamp();
 
-      // Responde no canal para que todos fiquem cientes da retirada legítima efetuada pelo gerente
+      // Responde no canal de texto para todos verem a auditoria da retirada de material
       return interaction.reply({ embeds: [embed] });
 
     } catch (err) {
