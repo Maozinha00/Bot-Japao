@@ -1,16 +1,31 @@
 /**
- * 🐺 HUNTERS BOT - SCRIPT OFICIAL v2.5 🐺
+ * 🐺 HUNTERS BOT - SCRIPT OFICIAL v2.6 (UPDATED) 🐺
  * Desenvolvido para o clã/facção HUNTERS.
  * 
- * Sincronização em tempo real de manufatura, vendas e divisões financeiras.
- * Requisitos: Node.js v18+ (usa fetch nativo, sem necessidade de node-fetch!)
+ * Sincronização em tempo real de manufatura, vendas e retiradas de insumos.
+ * NOVIDADE v2.6: Botão e Modal para Gerente realizar retirada de Aço!
+ * 
+ * Requisitos: Node.js v18+ (usa fetch nativo, sem necessidade de dependências pesadas!)
+ * Dependências: npm install discord.js dotenv
  */
 
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { 
+  Client, 
+  GatewayIntentBits, 
+  EmbedBuilder, 
+  ActionRowBuilder, 
+  ButtonBuilder, 
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  PermissionFlagsBits
+} = require('discord.js');
 
 const DISCORD_TOKEN = process.env.TOKEN || process.env.DISCORD_TOKEN;
-const ERP_API_URL = "SUA_URL_DO_ERP_AQUI"; // Insira a URL de seu ERP Hunters
+const ERP_API_URL = process.env.ERP_API_URL || "SUA_URL_DO_ERP_AQUI"; 
+const GERENTE_ROLE_ID = "123456789012345678"; // ID do cargo Gerente do seu servidor Discord
 
 if (!DISCORD_TOKEN) {
   console.error("❌ ERRO: O token do bot (DISCORD_TOKEN ou TOKEN) não foi configurado!");
@@ -53,7 +68,7 @@ async function fetchErpData() {
   }
 }
 
-client.once('clientReady', () => {
+client.once('ready', () => {
   console.log(`===============================================\n🐺 BOT HUNTERS ONLINE E PRONTO PARA COMBATE!\n🤖 Conectado como: ${client.user.tag}\n🌐 ERP Sincronizado: ${ERP_API_URL}\n===============================================`);
 });
 
@@ -89,10 +104,12 @@ client.on('messageCreate', async (message) => {
       .setFooter({ text: "Hunters Management ERP", iconURL: client.user.displayAvatarURL() })
       .setTimestamp();
 
+    // v2.6: Painel com botões incluindo o novo botão "Retirar Aço 📤"
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('btn_estoque').setLabel('Estoque 📦').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('btn_caixa').setLabel('Caixa 🏦').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('btn_ranking').setLabel('Ranking 🏆').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('btn_ranking').setLabel('Ranking 🏆').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('btn_retirar_aco').setLabel('Retirar Aço 📤').setStyle(ButtonStyle.Danger)
     );
 
     return message.reply({ embeds: [embed], components: [row] });
@@ -158,6 +175,51 @@ client.on('messageCreate', async (message) => {
     }
   }
 
+  // COMANDO: !retirar <quantidade> (Fallback caso queiram usar no chat)
+  if (command === 'retirar') {
+    const isManager = message.member.roles.cache.has(GERENTE_ROLE_ID) || message.member.permissions.has(PermissionFlagsBits.Administrator);
+    
+    if (!isManager) {
+      return message.reply("❌ **Acesso Negado:** Apenas Gerentes do clã têm permissão para retirar aço.");
+    }
+
+    const quantidade = parseInt(args[0]);
+    if (isNaN(quantidade) || quantidade <= 0) {
+      return message.reply("⚠️ **Uso correto:** `!retirar <quantidade>`\nExemplo: `!retirar 5000`");
+    }
+
+    try {
+      const response = await fetch(`${ERP_API_URL}/api/retirar-aco`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: message.author.id,
+          userName: message.author.username,
+          quantidade: quantidade,
+          motivo: "Retirada de aço direta via comando de chat"
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        return message.reply(`❌ **Erro na operação:** ${result.error || "Rejeitado pelo ERP."}`);
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("📤 RETIRADA DE AÇO AUTORIZADA!")
+        .setColor("#EF4444")
+        .setDescription(`👤 Autor: <@${message.author.id}>\n📉 Quantidade sacada: **${formatNumber(quantidade)} kg**\n📋 Motivo: _Retirada direta por comando de chat_`)
+        .addFields(
+          { name: "📦 Estoque de Aço Atual", value: `**${formatNumber(result.estoque)} kg**`, inline: true }
+        )
+        .setTimestamp();
+
+      return message.reply({ embeds: [embed] });
+    } catch (err) {
+      return message.reply("❌ **Erro de conexão:** Não foi possível contactar o servidor ERP.");
+    }
+  }
+
   // COMANDO: !ranking
   if (command === 'ranking') {
     const rankingMap = {};
@@ -189,33 +251,127 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Suporte a botões interativos
+// Suporte a botões e modais interativos
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
-  const erpData = await fetchErpData();
-  if (!erpData) return interaction.reply({ content: "❌ Erro ao conectar ao ERP.", ephemeral: true });
+  // 1. LIDAR COM CLIQUE EM BOTÕES DO PAINEL
+  if (interaction.isButton()) {
+    const erpData = await fetchErpData();
+    if (!erpData) return interaction.reply({ content: "❌ Erro ao conectar ao ERP.", ephemeral: true });
 
-  if (interaction.customId === 'btn_estoque') {
-    const clanAco = Math.floor(erpData.estoque * (erpData.settings.steelClanPercent / 100));
-    return interaction.reply({
-      content: `📦 **ESTOQUE GERAL:** ${formatNumber(erpData.estoque)} kg de Aço\n🛡️ **Reserva Estratégica do Clã:** ${formatNumber(clanAco)} kg`,
-      ephemeral: true
-    });
+    if (interaction.customId === 'btn_estoque') {
+      const clanAco = Math.floor(erpData.estoque * (erpData.settings.steelClanPercent / 100));
+      return interaction.reply({
+        content: `📦 **ESTOQUE GERAL:** ${formatNumber(erpData.estoque)} kg de Aço\n🛡️ **Reserva Estratégica do Clã:** ${formatNumber(clanAco)} kg`,
+        ephemeral: true
+      });
+    }
+
+    if (interaction.customId === 'btn_caixa') {
+      return interaction.reply({
+        content: `🏦 **SALDO ATUAL DO CAIXA:** ${formatMoney(erpData.caixa)} (Destinado à expansão e base do clã)`,
+        ephemeral: true
+      });
+    }
+
+    if (interaction.customId === 'btn_ranking') {
+      return interaction.reply({
+        content: `🏆 Use o comando \`!ranking\` no chat público para visualizar a classificação de desempenho!`,
+        ephemeral: true
+      });
+    }
+
+    // NOVO v2.6: Botão para Gerente Retirar Aço
+    if (interaction.customId === 'btn_retirar_aco') {
+      const member = interaction.member;
+      // Verifica se o usuário tem o cargo de gerente configurado ou se é administrador
+      const isManager = member.roles.cache.has(GERENTE_ROLE_ID) || member.permissions.has(PermissionFlagsBits.Administrator);
+
+      if (!isManager) {
+        return interaction.reply({
+          content: "❌ **Acesso Negado:** Apenas Gerentes do clã têm permissão para retirar aço do estoque estratégico.",
+          ephemeral: true
+        });
+      }
+
+      // Criação de Modal Dinâmico
+      const modal = new ModalBuilder()
+        .setCustomId('modal_retirar_aco')
+        .setTitle('🐺 Retirada de Aço — Hunters');
+
+      const qtyInput = new TextInputBuilder()
+        .setCustomId('retirar_qtd')
+        .setLabel('Quantidade de Aço a retirar (kg)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Ex: 5000')
+        .setRequired(true);
+
+      const reasonInput = new TextInputBuilder()
+        .setCustomId('retirar_motivo')
+        .setLabel('Motivo do Saque')
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('Ex: Fabricação de coletes balísticos para ação contra facção rival')
+        .setRequired(true);
+
+      const row1 = new ActionRowBuilder().addComponents(qtyInput);
+      const row2 = new ActionRowBuilder().addComponents(reasonInput);
+      modal.addComponents(row1, row2);
+
+      await interaction.showModal(modal);
+    }
   }
 
-  if (interaction.customId === 'btn_caixa') {
-    return interaction.reply({
-      content: `🏦 **SALDO ATUAL DO CAIXA:** ${formatMoney(erpData.caixa)} (Destinado à expansão e base do clã)`,
-      ephemeral: true
-    });
-  }
+  // 2. LIDAR COM ENVIO DO FORMULÁRIO MODAL (SUBMIT)
+  if (interaction.isModalSubmit() && interaction.customId === 'modal_retirar_aco') {
+    const quantidade = parseInt(interaction.fields.getTextInputValue('retirar_qtd'));
+    const motivo = interaction.fields.getTextInputValue('retirar_motivo');
 
-  if (interaction.customId === 'btn_ranking') {
-    return interaction.reply({
-      content: `🏆 Use o comando \`!ranking\` no chat público para visualizar a classificação de desempenho!`,
-      ephemeral: true
-    });
+    if (isNaN(quantidade) || quantidade <= 0) {
+      return interaction.reply({
+        content: "❌ **Erro:** A quantidade inserida deve ser um número inteiro positivo.",
+        ephemeral: true
+      });
+    }
+
+    try {
+      const response = await fetch(`${ERP_API_URL}/api/retirar-aco`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: interaction.user.id,
+          userName: interaction.user.username,
+          quantidade: quantidade,
+          motivo: motivo
+        })
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        return interaction.reply({
+          content: `❌ **Erro na operação:** ${result.error || "Operação rejeitada pelo ERP."}`,
+          ephemeral: true
+        });
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle("🛠️ RETIRADA DE AÇO REGISTRADA!")
+        .setColor("#EF4444")
+        .setDescription(`👤 Gerente: <@${interaction.user.id}> (${interaction.user.username})\n📉 Quantidade: **${formatNumber(quantidade)} kg**\n📋 Motivo: _${motivo}_`)
+        .addFields(
+          { name: "📦 Estoque Restante", value: `**${formatNumber(result.estoque)} kg**`, inline: true }
+        )
+        .setFooter({ text: "Sincronizado via ERP Hunters API • Lançamento Auditado" })
+        .setTimestamp();
+
+      // Responde no canal para que todos fiquem cientes da retirada legítima efetuada pelo gerente
+      return interaction.reply({ embeds: [embed] });
+
+    } catch (err) {
+      return interaction.reply({
+        content: "❌ **Erro de conexão:** Não foi possível contactar o servidor ERP para registrar a retirada.",
+        ephemeral: true
+      });
+    }
   }
 });
 
-client.login(TOKEN);
+client.login(DISCORD_TOKEN);
